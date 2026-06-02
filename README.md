@@ -2,6 +2,10 @@
 
 영상 파일에서 음성만 뽑아 오디오 파일로 만들고, 그 오디오를 텍스트 파일로 변환하는 스크립트입니다.
 
+동영상 파일을 다운로드해야 한다면 Chrome 확장 프로그램인 [Video DownloadHelper](https://chromewebstore.google.com/detail/video-downloadhelper/lmjnegcaeklhafolokijcfjliaokphfk)를 추천합니다.
+
+사용량을 다 썼다고 나오면 확장 프로그램을 지웠다가 다시 설치하면 됩니다.
+
 예를 들어 `inha/video` 폴더에 영상을 넣고 실행하면:
 
 ```text
