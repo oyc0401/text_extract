@@ -1,0 +1,9 @@
+**/video/
+**/audio/
+**/text/
+**/formatted/
+node_modules/
+
+.env
+
+.DS_Store

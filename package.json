@@ -1,0 +1,19 @@
+{
+  "name": "text-extract",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx --env-file=.env src/start.ts",
+    "convert": "npx tsx src/convert-to-mp3.ts",
+    "transcribe": "npx tsx --env-file=.env src/transcribe.ts",
+    "format": "npx tsx --env-file=.env src/format.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "openai": "^6.34.0"
+  }
+}
