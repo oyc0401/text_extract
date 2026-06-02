@@ -6,12 +6,12 @@
 
 사용량을 다 썼다고 나오면 확장 프로그램을 지웠다가 다시 설치하면 됩니다.
 
-예를 들어 `inha/video` 폴더에 영상을 넣고 실행하면:
+예를 들어 `inha/video/os` 폴더에 영상을 넣고 실행하면:
 
 ```text
-inha/video/강의.mp4
-  -> inha/audio/강의.mp3
-  -> inha/text/강의.txt
+inha/video/os/강의.mp4
+  -> inha/audio/os/강의.mp3
+  -> inha/text/os/강의.txt
 ```
 
 ## 준비물
@@ -100,31 +100,57 @@ pnpm install
 
 ## 폴더 구조
 
-작업할 폴더를 하나 만들고, 그 안에 `video` 폴더를 만듭니다.
+작업할 폴더를 하나 만들고, 그 안의 `video` 폴더에 영상 파일을 넣습니다.
+
+`video` 안에 하위 폴더가 있어도 됩니다. 하위 폴더 구조는 결과 폴더에도 그대로 유지됩니다.
 
 예를 들어 `inha`라는 작업 폴더를 쓴다면:
 
 ```text
 inha/
   video/
-    강의1.mp4
-    강의2.mp4
+    os/
+      강의1.mp4
+      강의2.mp4
+    network/
+      강의3.mp4
 ```
 
 실행 후에는 자동으로 아래처럼 만들어집니다.
 
 ```text
 inha/
-  video/
-    강의1.mp4
-    강의2.mp4
   audio/
-    강의1.mp3
-    강의2.mp3
+    os/
+      강의1.mp3
+      강의2.mp3
+    network/
+      강의3.mp3
+
   text/
-    강의1.txt
-    강의2.txt
+    os/
+      강의1.txt
+      강의2.txt
+    network/
+      강의3.txt
 ```
+
+즉 원본 영상의 위치가:
+
+```text
+inha/video/os/강의1.mp4
+```
+
+라면 결과는:
+
+```text
+inha/audio/os/강의1.mp3
+inha/text/os/강의1.txt
+```
+
+가 됩니다.
+
+`video`는 원본 영상을 넣는 입력 폴더 이름이라 결과 경로에서는 빠집니다.
 
 ## 실행 방법
 
@@ -165,7 +191,7 @@ pnpm run start
 영상 파일:
 
 ```text
-.mp4, .mov, .m4v, .mkv, .avi, .webm
+.mp4, .mov, .m4v, .mkv, .avi, .webm, .ts
 ```
 
 오디오 파일:
@@ -176,28 +202,29 @@ pnpm run start
 
 ## 이미 만든 파일은 건너뜁니다
 
-이미 `audio` 폴더에 같은 이름의 `.mp3` 파일이 있으면 다시 만들지 않습니다.
+이미 `audio` 폴더에 같은 경로의 `.mp3` 파일이 있으면 다시 만들지 않습니다.
 
-이미 `text` 폴더에 같은 이름의 `.txt` 파일이 있으면 다시 텍스트 추출을 하지 않습니다.
+이미 `text` 폴더에 같은 경로의 `.txt` 파일이 있으면 다시 텍스트 추출을 하지 않습니다.
 
 예:
 
 ```text
-inha/video/강의.mp4
-inha/audio/강의.mp3
-inha/text/강의.txt
+inha/video/os/강의.mp4
+inha/audio/os/강의.mp3
+inha/text/os/강의.txt
 ```
 
 이 상태에서 다시 실행하면 `강의.mp3`, `강의.txt`는 건너뜁니다.
 
-## 오디오만 있어도 됩니다
+## 오디오만 다시 텍스트로 만들고 싶을 때
 
-영상 파일 없이 이미 오디오 파일만 있는 경우에도 사용할 수 있습니다.
+이미 변환된 오디오가 있다면 영상 변환은 건너뛰고 텍스트 추출만 진행할 수 있습니다.
 
 ```text
 inha/
   audio/
-    강의.mp3
+    os/
+      강의.mp3
 ```
 
 실행:
@@ -210,10 +237,45 @@ pnpm run start inha
 
 ```text
 inha/
-  audio/
-    강의.mp3
   text/
-    강의.txt
+    os/
+      강의.txt
+```
+
+## 전체 사용 예시
+
+처음 한 번:
+
+```bash
+pnpm install
+```
+
+작업 폴더 만들기:
+
+```text
+inha/
+  video/
+    os/
+      sample.mp4
+```
+
+실행:
+
+```bash
+pnpm run start inha
+```
+
+결과 확인:
+
+```text
+inha/
+  audio/
+    os/
+      sample.mp3
+
+  text/
+    os/
+      sample.txt
 ```
 
 ## 자주 나는 오류
@@ -240,54 +302,24 @@ ffmpeg -version
 
 버전이 나오지 않으면 `ffmpeg`를 설치해야 합니다.
 
-### video 또는 audio 폴더가 필요합니다.
+### 입력한 폴더 안에 영상 파일이 없고, 변환된 audio 폴더도 없습니다.
 
-입력한 작업 폴더 안에 `video` 폴더도 없고 `audio` 폴더도 없다는 뜻입니다.
+입력한 작업 폴더 안에서 지원하는 영상 파일을 찾지 못했고, 이미 변환된 오디오 폴더도 없다는 뜻입니다.
 
 예:
 
 ```text
 inha/
   video/
+    os/
+      sample.mp4
 ```
 
-또는:
+또는 이미 변환된 오디오가 있다면:
 
 ```text
 inha/
   audio/
-```
-
-둘 중 하나는 있어야 합니다.
-
-## 전체 사용 예시
-
-처음 한 번:
-
-```bash
-pnpm install
-```
-
-작업 폴더 만들기:
-
-```text
-inha/
-  video/
-    sample.mp4
-```
-
-실행:
-
-```bash
-pnpm run start inha
-```
-
-결과 확인:
-
-```text
-inha/
-  audio/
-    sample.mp3
-  text/
-    sample.txt
+    os/
+      sample.mp3
 ```

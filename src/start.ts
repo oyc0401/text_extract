@@ -7,12 +7,20 @@ import {
   unlinkSync,
   writeFileSync,
 } from "fs";
-import { basename, extname, isAbsolute, join, resolve } from "path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "path";
 import { spawn } from "child_process";
 import { tmpdir } from "os";
 import OpenAI from "openai";
 
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm"]);
+const VIDEO_EXTENSIONS = new Set([
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".mkv",
+  ".avi",
+  ".webm",
+  ".ts",
+]);
 const AUDIO_EXTENSIONS = new Set([".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg"]);
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -24,9 +32,9 @@ function printUsage(): void {
   console.log("  pnpm run start inha");
   console.log("");
   console.log("필요한 폴더 구조:");
-  console.log("  {입력경로}/video  -> 원본 영상");
-  console.log("  {입력경로}/audio  -> 변환된 오디오");
-  console.log("  {입력경로}/text   -> 추출된 텍스트");
+  console.log("  {입력경로}/video/...영상파일");
+  console.log("  {입력경로}/audio/...mp3");
+  console.log("  {입력경로}/text/...txt");
 }
 
 function resolveProjectPath(input: string): string {
@@ -40,12 +48,94 @@ function resolveProjectPath(input: string): string {
   return resolve(process.cwd(), input);
 }
 
-function listFiles(dir: string, extensions: Set<string>): string[] {
-  if (!existsSync(dir)) return [];
+type MediaFile = {
+  inputPath: string;
+  relativePath: string;
+};
 
-  return readdirSync(dir)
-    .filter((file) => extensions.has(extname(file).toLowerCase()))
-    .sort((a, b) => a.localeCompare(b, "ko"));
+type WorkspacePaths = {
+  projectRoot: string;
+  videoRoot: string;
+  videoInputRoot: string;
+  audioDir: string;
+  textDir: string;
+};
+
+function listFilesRecursive(rootDir: string, extensions: Set<string>): MediaFile[] {
+  if (!existsSync(rootDir)) return [];
+
+  const results: MediaFile[] = [];
+  const entries = readdirSync(rootDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (entry.name === ".DS_Store") continue;
+
+    const entryPath = join(rootDir, entry.name);
+
+    if (entry.isDirectory()) {
+      results.push(...listFilesRecursive(entryPath, extensions));
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+    if (!extensions.has(extname(entry.name).toLowerCase())) continue;
+
+    results.push({
+      inputPath: entryPath,
+      relativePath: relative(rootDir, entryPath),
+    });
+  }
+
+  return results.sort((a, b) => a.relativePath.localeCompare(b.relativePath, "ko"));
+}
+
+function replaceExtension(filePath: string, nextExtension: string): string {
+  return join(
+    dirname(filePath),
+    `${basename(filePath, extname(filePath))}${nextExtension}`
+  );
+}
+
+function formatDisplayPath(filePath: string): string {
+  const relativePath = relative(process.cwd(), filePath);
+
+  if (!relativePath.startsWith("..") && !isAbsolute(relativePath)) {
+    return relativePath;
+  }
+
+  return filePath;
+}
+
+function deriveWorkspacePaths(inputRoot: string): WorkspacePaths {
+  let current = inputRoot;
+
+  while (true) {
+    if (basename(current).toLowerCase() === "video") {
+      const projectRoot = dirname(current);
+
+      return {
+        projectRoot,
+        videoRoot: current,
+        videoInputRoot: inputRoot,
+        audioDir: join(projectRoot, "audio"),
+        textDir: join(projectRoot, "text"),
+      };
+    }
+
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+
+  const videoDir = join(inputRoot, "video");
+
+  return {
+    projectRoot: inputRoot,
+    videoRoot: existsSync(videoDir) ? videoDir : inputRoot,
+    videoInputRoot: existsSync(videoDir) ? videoDir : inputRoot,
+    audioDir: join(inputRoot, "audio"),
+    textDir: join(inputRoot, "text"),
+  };
 }
 
 function runCommand(command: string, args: string[]): Promise<void> {
@@ -176,32 +266,41 @@ async function transcribeFile(client: OpenAI, inputPath: string): Promise<string
   return results.join("\n");
 }
 
-async function convertVideos(videoDir: string, audioDir: string): Promise<void> {
-  const videoFiles = listFiles(videoDir, VIDEO_EXTENSIONS);
+async function convertVideos(
+  videoRoot: string,
+  videoInputRoot: string,
+  outputRoot: string
+): Promise<void> {
+  const videoFiles = listFilesRecursive(videoInputRoot, VIDEO_EXTENSIONS);
 
   if (videoFiles.length === 0) {
-    console.log("video 폴더에 변환할 영상 파일이 없습니다.");
+    console.log("변환할 영상 파일이 없습니다.");
     return;
   }
 
-  mkdirSync(audioDir, { recursive: true });
   console.log(`영상 -> 오디오 변환: 총 ${videoFiles.length}개\n`);
 
   for (let i = 0; i < videoFiles.length; i++) {
     const file = videoFiles[i];
-    const inputPath = join(videoDir, file);
-    const outputPath = join(audioDir, `${basename(file, extname(file))}.mp3`);
+    const outputRelativePath = replaceExtension(
+      relative(videoRoot, file.inputPath),
+      ".mp3"
+    );
+    const outputPath = join(outputRoot, outputRelativePath);
 
     if (existsSync(outputPath)) {
-      console.log(`[${i + 1}/${videoFiles.length}] ${file} ... 건너뜀 (이미 존재)`);
+      console.log(
+        `[${i + 1}/${videoFiles.length}] ${file.relativePath} ... 건너뜀 (이미 존재: ${formatDisplayPath(outputPath)})`
+      );
       continue;
     }
 
-    process.stdout.write(`[${i + 1}/${videoFiles.length}] ${file} ... `);
+    mkdirSync(dirname(outputPath), { recursive: true });
+    process.stdout.write(`[${i + 1}/${videoFiles.length}] ${file.relativePath} ... `);
 
     try {
-      await convertToMp3(inputPath, outputPath);
-      console.log("완료");
+      await convertToMp3(file.inputPath, outputPath);
+      console.log(`완료 -> ${formatDisplayPath(outputPath)}`);
     } catch (err) {
       console.log("실패");
       console.error(`  오류: ${(err as Error).message}`);
@@ -211,11 +310,11 @@ async function convertVideos(videoDir: string, audioDir: string): Promise<void> 
   console.log("");
 }
 
-async function transcribeAudios(audioDir: string, textDir: string): Promise<void> {
-  const audioFiles = listFiles(audioDir, AUDIO_EXTENSIONS);
+async function transcribeAudios(audioRoot: string, textRoot: string): Promise<void> {
+  const audioFiles = listFilesRecursive(audioRoot, AUDIO_EXTENSIONS);
 
   if (audioFiles.length === 0) {
-    console.log("audio 폴더에 텍스트로 변환할 오디오 파일이 없습니다.");
+    console.log("텍스트로 변환할 오디오 파일이 없습니다.");
     return;
   }
 
@@ -224,27 +323,29 @@ async function transcribeAudios(audioDir: string, textDir: string): Promise<void
     process.exit(1);
   }
 
-  mkdirSync(textDir, { recursive: true });
-
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   console.log(`오디오 -> 텍스트 추출: 총 ${audioFiles.length}개\n`);
 
   for (let i = 0; i < audioFiles.length; i++) {
     const file = audioFiles[i];
-    const inputPath = join(audioDir, file);
-    const outputPath = join(textDir, `${basename(file, extname(file))}.txt`);
+    const outputRelativePath = replaceExtension(file.relativePath, ".txt");
+    const outputPath = join(textRoot, outputRelativePath);
+
+    mkdirSync(dirname(outputPath), { recursive: true });
 
     if (existsSync(outputPath)) {
-      console.log(`[${i + 1}/${audioFiles.length}] ${file} ... 건너뜀 (이미 존재)`);
+      console.log(
+        `[${i + 1}/${audioFiles.length}] ${file.relativePath} ... 건너뜀 (이미 존재: ${formatDisplayPath(outputPath)})`
+      );
       continue;
     }
 
-    process.stdout.write(`[${i + 1}/${audioFiles.length}] ${file} ... `);
+    process.stdout.write(`[${i + 1}/${audioFiles.length}] ${file.relativePath} ... `);
 
     try {
-      const text = await transcribeFile(client, inputPath);
+      const text = await transcribeFile(client, file.inputPath);
       writeFileSync(outputPath, text.trim() + "\n", "utf-8");
-      console.log("완료");
+      console.log(`완료 -> ${formatDisplayPath(outputPath)}`);
     } catch (err) {
       console.log("실패");
       console.error(`  오류: ${(err as Error).message}`);
@@ -260,25 +361,29 @@ if (!inputPath) {
 }
 
 const rootDir = resolveProjectPath(inputPath);
-const videoDir = join(rootDir, "video");
-const audioDir = join(rootDir, "audio");
-const textDir = join(rootDir, "text");
+const workspace = deriveWorkspacePaths(rootDir);
 
 if (!existsSync(rootDir)) {
   console.error(`입력한 폴더를 찾을 수 없습니다: ${rootDir}`);
   process.exit(1);
 }
 
-if (!existsSync(videoDir) && !existsSync(audioDir)) {
-  console.error("video 또는 audio 폴더가 필요합니다.");
+const hasVideoFiles = listFilesRecursive(workspace.videoInputRoot, VIDEO_EXTENSIONS).length > 0;
+
+if (!hasVideoFiles && !existsSync(workspace.audioDir)) {
+  console.error("입력한 폴더 안에 영상 파일이 없고, 변환된 audio 폴더도 없습니다.");
   console.error(`확인한 경로: ${rootDir}`);
   process.exit(1);
 }
 
-console.log(`작업 폴더: ${rootDir}`);
+console.log(`작업 폴더: ${workspace.projectRoot}`);
+console.log(`영상 기준: ${formatDisplayPath(workspace.videoRoot)}`);
+console.log(`영상 입력: ${formatDisplayPath(workspace.videoInputRoot)}`);
+console.log(`오디오 출력: ${formatDisplayPath(workspace.audioDir)}`);
+console.log(`텍스트 출력: ${formatDisplayPath(workspace.textDir)}`);
 console.log("");
 
-await convertVideos(videoDir, audioDir);
-await transcribeAudios(audioDir, textDir);
+await convertVideos(workspace.videoRoot, workspace.videoInputRoot, workspace.audioDir);
+await transcribeAudios(workspace.audioDir, workspace.textDir);
 
 console.log("\n모든 작업 완료!");
