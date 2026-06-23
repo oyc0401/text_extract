@@ -58,6 +58,7 @@ type WorkspacePaths = {
   videoRoot: string;
   videoInputRoot: string;
   audioDir: string;
+  audioInputRoot: string;
   textDir: string;
 };
 
@@ -118,6 +119,7 @@ function deriveWorkspacePaths(inputRoot: string): WorkspacePaths {
         videoRoot: current,
         videoInputRoot: inputRoot,
         audioDir: join(projectRoot, "audio"),
+        audioInputRoot: join(projectRoot, "audio", relative(current, inputRoot)),
         textDir: join(projectRoot, "text"),
       };
     }
@@ -134,6 +136,7 @@ function deriveWorkspacePaths(inputRoot: string): WorkspacePaths {
     videoRoot: existsSync(videoDir) ? videoDir : inputRoot,
     videoInputRoot: existsSync(videoDir) ? videoDir : inputRoot,
     audioDir: join(inputRoot, "audio"),
+    audioInputRoot: join(inputRoot, "audio"),
     textDir: join(inputRoot, "text"),
   };
 }
@@ -310,8 +313,12 @@ async function convertVideos(
   console.log("");
 }
 
-async function transcribeAudios(audioRoot: string, textRoot: string): Promise<void> {
-  const audioFiles = listFilesRecursive(audioRoot, AUDIO_EXTENSIONS);
+async function transcribeAudios(
+  audioRoot: string,
+  audioInputRoot: string,
+  textRoot: string
+): Promise<void> {
+  const audioFiles = listFilesRecursive(audioInputRoot, AUDIO_EXTENSIONS);
 
   if (audioFiles.length === 0) {
     console.log("텍스트로 변환할 오디오 파일이 없습니다.");
@@ -328,7 +335,7 @@ async function transcribeAudios(audioRoot: string, textRoot: string): Promise<vo
 
   for (let i = 0; i < audioFiles.length; i++) {
     const file = audioFiles[i];
-    const outputRelativePath = replaceExtension(file.relativePath, ".txt");
+    const outputRelativePath = replaceExtension(relative(audioRoot, file.inputPath), ".txt");
     const outputPath = join(textRoot, outputRelativePath);
 
     mkdirSync(dirname(outputPath), { recursive: true });
@@ -384,6 +391,6 @@ console.log(`텍스트 출력: ${formatDisplayPath(workspace.textDir)}`);
 console.log("");
 
 await convertVideos(workspace.videoRoot, workspace.videoInputRoot, workspace.audioDir);
-await transcribeAudios(workspace.audioDir, workspace.textDir);
+await transcribeAudios(workspace.audioDir, workspace.audioInputRoot, workspace.textDir);
 
 console.log("\n모든 작업 완료!");
